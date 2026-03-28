@@ -33,7 +33,7 @@ The OTL is not a replacement for internal monitoring. It is a different product 
 
 | Chain | Network | Status | Dashboard | API |
 |---|---|---|---|---|
-| Story | Aeneid (testnet) | 🟢 Live | [cumulo.pro/services/story_aeneid](https://cumulo.pro/services/story_aeneid) | [otl-api.cumulo.com.es/otl/v2/story/aeneid/posture](https://otl-api.cumulo.com.es/otl/v2/story/aeneid/posture) |
+| Story | Aeneid (testnet) | 🟢 Live | [cumulo.pro/services/story_aeneid](https://cumulo.pro/services/story_aeneid) · [Documentation](https://cumulo.pro/services/story_aeneid/docs.php) | [otl-api.cumulo.com.es/otl/v2/story/aeneid/posture](https://otl-api.cumulo.com.es/otl/v2/story/aeneid/posture) |
 
 ---
 
