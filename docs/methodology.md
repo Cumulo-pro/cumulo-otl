@@ -99,7 +99,7 @@ Chain-wide validator set health metrics:
 
 Cumulo's consensus voting power in the current validator set. From `cometbft_consensus_validator_power` filtered by Cumulo's validator address, expressed both in absolute units and as a percentage of `cometbft_consensus_validators_power` (total network power).
 
-On a Proof-of-Governance chain, voting weight is assigned by governance and equal across the active set, not acquired by staking; see the chain's profile for whether that applies. This is a **separate, independently sourced** figure from the `CHAIN`-labeled governance voting weight in § 4 below (Prometheus/consensus vs. staking-module/governance); the two happen to coincide closely on an equal-weight chain, which is a property of that chain's token allocation, not a computation this system performs.
+This is Cumulo's share of the network's total consensus voting power, however that power is allocated on a given chain: proportional to bonded stake on a standard Proof-of-Stake chain, or a weight assigned directly by governance on a Proof-of-Governance chain such as XRPL EVM (see the chain's profile for which model applies, and for XRPL EVM specifically, an equal weight across the active set rather than stake-proportional). This is a **separate, independently sourced** figure from the `CHAIN`-labeled voting weight in § 4 below (Prometheus/consensus vs. staking-module/governance). On a standard Proof-of-Stake chain the two track each other closely by construction, since consensus power is derived from bonded stake. On XRPL EVM they coincide only because that chain's governance-assigned allocation happens to be even across the set, a property of that chain's token allocation, not a computation this system performs.
 
 **Justification:** Voting power determines Cumulo's influence in consensus and is standard disclosure in institutional validator performance reports.
 
@@ -150,6 +150,8 @@ Cumulo's canonical CometBFT consensus address: `SHA256(consensus_pubkey)` trunca
 
 Sourced entirely from chain state (staking + slashing modules), independent of the node's own telemetry, and re-derivable by anyone from any LCD or full node via `cosmos/staking/v1beta1/validators/<valoper>` and `cosmos/slashing/v1beta1/signing_infos/<valcons>`. If this fetch fails, `posture_grade` is capped at B (`on_chain_unconfirmed_grade_capped`, see slo-scoring.md) rather than defaulting to a clean bill of health. This is the one source in the system treated as load-bearing instead of soft.
 
+These are the standard `x/staking` and `x/slashing` fields present on any Cosmos SDK / CometBFT chain, regardless of its consensus-economics model. What a given field represents in practice, delegated stake vs. a governance-assigned weight, a real commission market vs. one fixed at zero, depends on the chain, noted per field below and detailed fully in that chain's profile under [`chains/`](../chains/).
+
 ### `signing_uptime_pct` / `missed_blocks` / `signed_blocks_window` / `jail_margin`
 
 `missed_blocks_counter` over `signed_blocks_window`, straight from the chain's `x/slashing` module: the canonical, third-party-verifiable signing record the chain itself uses to decide jailing, and the only signing metric that can't be gamed by keeping a node running without signing. `jail_margin = signed_blocks_window × (1 − min_signed_per_window)` is the number of blocks Cumulo can still miss in the window before the chain itself would jail the validator; it anchors the validator-core term of `posture_score`.
@@ -164,13 +166,13 @@ Position in the active set. `status` (`BOND_STATUS_BONDED`) and the `jailed` / `
 
 ### `tokens` / `voting_share_pct`
 
-Governance-assigned voting weight (tokens) and its share of the active set, from the staking module. On a Proof-of-Governance chain this weight is fixed by governance, not acquired by staking; see § 3 above for how this compares to the separately sourced consensus voting-power figure.
+Bonded weight (tokens) and its share of the active set, from the staking module. On a standard Proof-of-Stake chain this is the validator's total bonded stake (self-bond plus delegations), accumulated through staking and adjustable by delegators moving their stake. On a Proof-of-Governance chain such as XRPL EVM, the same field instead carries a weight assigned directly by governance vote, equal across the active set rather than accumulated through delegation. The chain's profile states which model applies and, for a Proof-of-Stake chain, the actual delegation figures. See § 3 above for how this compares to the separately sourced consensus voting-power figure.
 
-**Justification:** The on-chain counterpart to the Prometheus-derived `voting_power_pct` in § 3, from an independent source.
+**Justification:** The on-chain counterpart to the Prometheus-derived `voting_power_pct` in § 3, from an independent source, and on a Proof-of-Stake chain the primary concentration-risk figure delegators use to evaluate a validator.
 
 ### `commission_rate` / `commission_max_rate` / `commission_max_change_rate` / `commission_updated_at`
 
-From the staking module's `commission` object. On a Proof-of-Governance chain these are commonly fixed at 0% by protocol design (no delegation market, no delegator rewards). The OTL states this explicitly rather than omitting the fields.
+From the staking module's `commission` object: the delegator-facing fee a validator charges on staking rewards, and the ceiling and rate-of-change limit on how far it can move. On a standard Proof-of-Stake chain this is an operator-set figure with real weight, since it directly determines delegator returns. On a Proof-of-Governance chain with no delegation market or delegator rewards, such as XRPL EVM, these fields are commonly fixed at 0% by protocol design rather than by operator choice. The OTL states the figure explicitly either way, with the chain's profile explaining which case applies, rather than omitting fields that don't carry their usual meaning on a given chain.
 
 **Justification:** Commission and its change history is the most frequently asked question among delegators on Proof-of-Stake chains; on a Proof-of-Governance chain the answer is structurally fixed, and showing it explicitly, rather than omitting a field that doesn't apply, keeps the disclosure honest either way.
 
