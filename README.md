@@ -34,8 +34,9 @@ The OTL is not a replacement for internal monitoring. It is a different product 
 | Chain | Network | Status | Dashboard | API |
 |---|---|---|---|---|
 | XRPL EVM | Mainnet | 🟢 Live | [cumulo.pro/services/xrplevm_mainnet/otl](https://cumulo.pro/services/xrplevm_mainnet/otl) · [Documentation](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture) |
+| XRPL EVM | Testnet | 🟢 Live | [cumulo.pro/services/xrplevm/otl](https://cumulo.pro/services/xrplevm/otl) · [Documentation](https://cumulo.pro/services/xrplevm/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture) |
 
-Additional CometBFT chains are onboarded by adding one entry to `chains.json`. See [Roadmap](#roadmap).
+Additional CometBFT chains, including standard Proof-of-Stake chains rather than XRPL EVM's Proof-of-Governance model, are onboarded by adding one entry to `chains.json`. The same `cosmos-cometbft` profile and scoring model apply unchanged; see [Roadmap](#roadmap).
 
 ---
 
@@ -47,14 +48,14 @@ For each supported chain, the OTL exposes:
 A single-signal summary of infrastructure status: `ready` · `syncing` · `stale` · `bootstrapping` · `maintenance` · `down`
 
 ### SLO Score & Grade
-A composite 0-100 score derived from consensus-health signals, expressed as a letter grade (A to D). The model is conservative by design: it penalises byzantine / missing validators and elevated block-processing and round-duration latency, and deliberately does **not** penalise informational counters or availability computed over an incomplete history. See [docs/slo-scoring.md](docs/slo-scoring.md) for the full formula and thresholds.
+A composite 0-100 score, expressed as a letter grade (A to D), built entirely from signals specific to **Cumulo's own infrastructure**: on-chain signing record against the chain's own jailing threshold, public RPC availability against a published target, and the track-record signals below. It deliberately does **not** penalise chain-wide conditions outside Cumulo's control (byzantine/missing validators, consensus round duration) or availability computed over an incomplete history. See [docs/slo-scoring.md](docs/slo-scoring.md) for the full formula, thresholds, and risk-flag catalogue.
 
 ### Track Record & Governance
-Computed live from the public [incidents.json](https://github.com/Cumulo-pro/Cumulo-Front-Chain/blob/main/incidents.json) activity log, independent of live node metrics:
+Computed from the public [incidents.json](https://github.com/Cumulo-pro/Cumulo-Front-Chain/blob/main/incidents.json) activity log and, for proposals still open, the live chain governance module, independent of live node metrics:
 - Validator since / governance proposal of approval
-- Slashing / jailing / double-signing events (target: zero)
-- Mandatory upgrades applied, and the testnet-first upgrade policy
-- Governance actions (votes & proposals) recorded
+- Slashing / jailing / double-signing events (target: zero; caps the grade permanently if any is on record)
+- Mandatory upgrades applied on schedule, and the testnet-first upgrade policy (a late upgrade caps the grade)
+- Governance vote participation against a per-chain target, and public disclosure of each vote (disclosure is informational only, never scored)
 
 ### Chain Context
 - Head height and block freshness (from CometBFT RPC `/status`)
@@ -68,11 +69,11 @@ Computed live from the public [incidents.json](https://github.com/Cumulo-pro/Cum
 - Consensus address (`SHA256(consensus_pubkey)` truncated to 20 bytes, the value block explorers show)
 
 ### On-Chain Validator Record
-Sourced entirely from chain state (staking + slashing modules), independent of the node's own telemetry and re-derivable by anyone from any LCD:
+Sourced entirely from chain state (staking + slashing modules), independent of the node's own telemetry and re-derivable by anyone from any LCD. These are the same standard fields on every Cosmos SDK / CometBFT chain; what they represent depends on that chain's economic model (see each chain's profile):
 - **Signing uptime**: `missed_blocks_counter` over `signed_blocks_window`; the canonical, third-party-verifiable signing record the chain itself uses for jailing
 - **Bonded status / jailed flag**
-- **Governance voting weight** (tokens) and share of the set
-- **Commission** (rate / max rate / max change rate); for Proof of Governance chains this is structurally `0%` and is stated explicitly rather than omitted
+- **Voting weight** (tokens) and share of the set: delegated stake on a standard Proof-of-Stake chain, governance-assigned on a Proof-of-Governance chain
+- **Commission** (rate / max rate / max change rate); on a Proof-of-Governance chain with no delegation market this is commonly structurally `0%` and is stated explicitly rather than omitted
 
 ### Consensus Timings
 All histogram quantiles are aggregated across scraped instances with `sum(rate(bucket[5m])) by (le)`:
@@ -111,7 +112,7 @@ OTL data derives from open, verifiable sources with no proprietary intermediary.
 | Prometheus (CometBFT exporter) | `PROM` | self-reported | Standard metrics exported by the node binary. Consensus timings, peer counts, validator counters, network health, probe-based availability. |
 | check_d (aggregate-rpcs collector) | `CHECK_D` | independent | External endpoint scan: reliability, per-region latency, TLS validity, CORS, pruning, node version, block height. |
 | snapshot_checker (aggregate-snapshots collector) | `SNAPCHECK` | independent | External snapshot check: size, last-modified time, measured download speed, and state-sync availability. |
-| Chain state (staking + slashing modules) | `CHAIN` | on-chain | Signing uptime, bonded / jailed status, governance voting weight, commission. Consensus state, re-derivable from any LCD via `cosmos/staking/v1beta1/validators/<valoper>` and `cosmos/slashing/v1beta1/signing_infos`. |
+| Chain state (staking + slashing modules) | `CHAIN` | on-chain | Signing uptime, bonded / jailed status, voting weight (delegated stake or governance-assigned, per chain), commission. Consensus state, re-derivable from any LCD via `cosmos/staking/v1beta1/validators/<valoper>` and `cosmos/slashing/v1beta1/signing_infos`. |
 
 No proprietary data sources. No black boxes. Every metric is independently verifiable.
 
@@ -157,27 +158,27 @@ curl https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/slo | jq '.slo'
 
 ## Documentation
 
-- [docs/methodology.md](docs/methodology.md): what each metric measures and why it is included
+- [docs/methodology.md](docs/methodology.md): what each metric measures and why it is included, chain-agnostic
 - [docs/slo-scoring.md](docs/slo-scoring.md): the SLO scoring formula, thresholds, and grade assignment
 - [docs/api-schema.md](docs/api-schema.md): full API response schema
 - [chains/xrplevm-mainnet.md](chains/xrplevm-mainnet.md): XRPL EVM Mainnet chain profile
-- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs)
+- [chains/xrplevm-testnet.md](chains/xrplevm-testnet.md): XRPL EVM Testnet chain profile
+- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) (Mainnet) · [cumulo.pro/services/xrplevm/otl-docs](https://cumulo.pro/services/xrplevm/otl-docs) (Testnet)
 
 ---
 
 ## Architecture
 
 ```
-SELF-REPORTED
+SELF-REPORTED (into OTL API)
   CometBFT RPC /status            ->  head height, freshness, catching_up, validator address
   Prometheus (CometBFT exporter)  ->  consensus timings, peers, validator + network counters, availability
 
-INDEPENDENT
-  check_d (aggregate-rpcs)             ->  external endpoint scan
-  snapshot_checker (aggregate-snapshots) ->  external snapshot + state-sync check
-
-ON-CHAIN
-  staking + slashing modules (via LCD) ->  signing uptime, bonded/jailed, voting weight, commission
+ON-CHAIN (into OTL API)
+  staking + slashing modules (via LCD)  ->  signing uptime, bonded/jailed, voting weight, commission
+  governance module (via LCD)           ->  live vote check, open proposals only
+  incidents.json (GitHub)               ->  slashing/upgrade history, governance participation for closed
+                                             proposals; feeds the score, not only the dashboard display
 
         |
         v
@@ -185,7 +186,11 @@ ON-CHAIN
         |
         v
   OTL Dashboard (PHP)  ->  cached fetch + stale-serve, human-readable rendering
-        +  incidents.json (GitHub) consumed directly for Track Record & Governance
+        +  incidents.json (GitHub) consumed again, directly, for the Track Record & Governance display
+
+INDEPENDENT (consumed directly by the Dashboard, not by the OTL API)
+  check_d (aggregate-rpcs)               ->  external endpoint scan
+  snapshot_checker (aggregate-snapshots) ->  external snapshot + state-sync check
 ```
 
 **Stack:** Node.js · Express · Prometheus · CometBFT · PHP · Nginx · Tailwind CSS
@@ -198,11 +203,13 @@ ON-CHAIN
 
 - [x] First production deployment live
 - [x] XRPL EVM Mainnet live
+- [x] XRPL EVM Testnet live
 - [x] Independent collectors integrated (check_d, snapshot_checker)
-- [x] On-chain validator record (signing uptime, bonded status, commission) from staking + slashing
-- [ ] Rolling 30-day availability with persistent storage
-- [ ] Incident counter integrated into the SLO score
-- [ ] Additional chains: Celestia, Dymension
+- [x] On-chain validator record (signing uptime, bonded status, voting weight, commission) from staking + slashing
+- [x] Rolling 30d / 90d / lifetime availability with persistent daily rollup
+- [x] Incident history (slashing, delayed upgrades) integrated into the SLO score
+- [x] Governance vote participation and public-disclosure tracking integrated into the SLO score
+- [ ] Additional chains: Celestia, Dymension (including at least one standard Proof-of-Stake chain, to validate the methodology's chain-agnostic claim end to end)
 - [ ] PDF report generation (monthly SLO report)
 
 ---
