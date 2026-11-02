@@ -1,6 +1,6 @@
 # OTL Methodology: Metric Catalogue & Justification
 
-This document describes every metric published by the Cumulo OTL, its data source, what it measures, and the institutional justification for its inclusion. It is chain-agnostic: the OTL applies the same `cosmos-cometbft` profile to every CometBFT chain it supports, with only endpoints, chain filters, and a handful of thresholds configured per chain. For a specific chain's concrete values (job labels, thresholds, validator address), see its profile under [`chains/`](../chains/).
+This document describes every metric published by the Cumulo OTL, its data source, what it measures, and the institutional justification for its inclusion. It is chain-agnostic: the OTL applies the same `cosmos-cometbft` profile to every CometBFT chain it supports, with only endpoints, chain filters, and a handful of thresholds configured per chain. Chain-specific duties, such as block proposals and Fibre on Celestia, are opt-in blocks documented in §§ 10 and 11. For a specific chain's concrete values (job labels, thresholds, validator address), see its profile under [`chains/`](../chains/).
 
 ---
 
@@ -14,6 +14,8 @@ This document describes every metric published by the Cumulo OTL, its data sourc
 | `CHAIN` | Chain state (staking + slashing modules) | Read from the chain itself via Cumulo's own block explorer, re-derivable by anyone from any LCD, independent of the node's own telemetry |
 | `CHECK_D` | check_d (independent collector) | External probe of the public RPC endpoint, run by Cumulo but observing from outside the node, same as any third party would |
 | `SNAPCHECK` | snapshot_checker (independent collector) | External download and inspection of the published snapshot / state-sync endpoints |
+| `PROPOSALS` | Missed proposals monitor | Cumulo's own monitor of block proposals made and missed, inferred from public consensus data (Celestia) |
+| `FIBRE` | Fibre Network Monitor | Cumulo's own monitor of Fibre servers: four probes check each host and verify the data it holds (Celestia) |
 | `DERIVED` | Computed | Calculated from one or more of the above |
 
 The two independent collectors (`CHECK_D`, `SNAPCHECK`) are Cumulo-built and Cumulo-run, open source. What makes their output useful as a cross-check is that they measure from outside the node and don't edit results after collection, not that a third party operates them. See [Independent Collectors](../README.md#independent-collectors) in the README.
@@ -281,6 +283,46 @@ A second, external measurement of the public RPC endpoint, run by Cumulo but obs
 - **Independent cross-check:** `snapshot_checker` downloads and inspects the same published snapshot from outside this page's own fetch (size, last-modified time, measured download speed), rather than trusting the page's own retrieval of the index. Shows "not yet cross-checked" for a chain with no entry in `chains_snapshot.json`.
 
 **Justification:** the snapshot is a community service, not a validator obligation. An external download check verifies it is actually current and fetchable, not merely present.
+
+---
+
+## 10. Block Proposals (Celestia) · `PROPOSALS`
+
+On a permissionless Proof-of-Stake chain such as Celestia, a validator is scheduled to propose blocks in proportion to its stake, and a missed proposal is a block the chain had to rebuild in a later round. Signing uptime does not show it: a validator can sign every block it receives and still miss the ones it was scheduled to propose.
+
+### `proposals.made` / `proposals.missed` / `proposals.miss_rate_pct`
+
+Counts of the blocks Cumulo proposed and of the turns it missed, since the monitor's start block. The counts come from Cumulo's own missed-proposals monitor, and a missed proposal is an **inference** from public consensus data (the scheduled proposer for a height compared with the block's actual proposer), not an on-chain record. The complete history is published as JSON, with one archive per month.
+
+### `proposals.share_pct` and network context
+
+The share of all proposals Cumulo delivered, to be compared with its voting share (proposals follow stake), and the number of active validators with zero misses and the network-wide miss rate. Context only, never scored.
+
+**Scoring:** miss rate above 0.1% costs 15 points and caps the grade at B; above 0.5% costs 30 and caps it at C. It is only scored from 2,000 proposal turns, so a young sample cannot swing the grade; below that the figure is shown with `proposals_not_scored`. See [slo-scoring.md](slo-scoring.md), block 1b.
+
+**Justification:** proposing is the one duty that is entirely the validator's own and that signing uptime cannot see. The public record lets any delegator compare validators on the same measure.
+
+---
+
+## 11. Fibre (Celestia) · `FIBRE`
+
+Every Celestia validator operates a Fibre server next to its consensus node, and Fibre payments only settle when validators holding two thirds of the stake can serve them at the same time. Keeping the server ready is therefore part of the validator's duty. The data comes from Cumulo's own Fibre Network Monitor, which checks every registered host once a minute from four probes (US, EU, CA, AS): TCP, TLS 1.3, HTTP/2, and the TLS identity that the validator's consensus key must endorse. It also downloads rows of the blobs a host signed and verifies them against the blob commitment. Its raw data is public as daily files with their sha256, monthly bundles and a consistency test that rebuilds the figures from the archive.
+
+### `fibre.ready` / `fibre.regions_online` / `fibre.reason`
+
+Whether the host is ready, as agreed by the majority of probe regions, so one bad route cannot mark a host down nor hide an outage. `reason` is `ready`, `not_ready`, `no_host`, `monitor_unknown` or `warming_up`; the last two mean the monitor is unsure and nothing is penalised.
+
+### `fibre.uptime` (24h / 7d / 30d) and `fibre.custody` (7d / 30d)
+
+Uptime is the share of successful checks, published with the number of checks behind it. **Data custody** is the share of the blobs the host signed that it actually served when asked, with the rows verified against the blob commitment. Counters are `null`, never `0`, until a sample exists.
+
+### `fibre.endorsements`, `fibre.identity`, latency, network readiness
+
+Endorsements (blobs signed) are **informational**: the publisher stops collecting signatures at two thirds of the stake, so an unsigned blob is not a failure. Identity shows whether the certificate is endorsed by the consensus key and its expiry. Network readiness (ready stake against the 66.67% line) is chain-wide context. The Fibre server's own Prometheus job (up, version, storage) is shown as `PROM` context. Only the host's country is exposed, never an address.
+
+**Scoring:** the worst of three tests is applied once: host ready now (not ready or not registered: 20 points, cap B); 7-day uptime against 99% (12 points, cap B; below 98%: 24 points, cap C; from 500 checks); 30-day data custody against 99% (15 points, cap B; below 95%: 30 points, cap C; from 50 checks). See [slo-scoring.md](slo-scoring.md), block 1c.
+
+**Justification:** Fibre is crucial to Celestia, so it is scored with the same weight as proposals. Fibre on mainnet carries little traffic so far, which is why every figure is published with its sample size and why the weight will be reviewed as traffic grows. The monitor is Cumulo's, measuring Cumulo, which is why its archive, methodology and consistency test are public.
 
 ---
 

@@ -15,13 +15,15 @@ A score of 100 means no active reliability concerns. Each detected risk conditio
 
 **Design principle: infrastructure, not the chain.** Earlier versions of this model scored chain-wide consensus health observed from Cumulo's node (byzantine / missing validator counts, round duration). That conflated the *network's* health with *Cumulo's*, and could mark the score down for conditions entirely outside Cumulo's control. The model was rewritten around one question instead: **is Cumulo fulfilling its validator duty, and are its own core node and public RPC endpoint healthy right now?** Conditions belonging to the network as a whole (byzantine/missing validators, round duration) are still published, but only as context; they never move `posture_score`. See [What the Score Does NOT Penalise](#what-the-score-does-not-penalise).
 
+On Celestia the validator core has two duties: signing blocks (the chain-enforced slashing line) and proposing blocks. Whether a validator delivers the blocks it is scheduled to propose is the main measure of its reliability there, and signing uptime alone does not show it, so block proposals are scored with a high weight (see block 1b). Celestia validators also operate a Fibre server, and Fibre payments only settle when validators with two thirds of the stake have a ready one, so keeping it ready is scored with the same weight (see block 1c).
+
 The validator-core thresholds are not invented percentages. They are derived from the chain's own slashing parameters, so the score stays objective and auditable against on-chain state that anyone can re-derive.
 
 ---
 
 ## Score Formula
 
-Field sources: `on_chain` = chain state (staking + slashing modules, `CHAIN`); `reliability` / `chain_context` / `validator_performance` = Prometheus + RPC (`PROM`/`RPC`, soft: degrade to `null`, never fabricated); `governance` = chain governance module for open proposals, `incidents.json` for closed ones (see [methodology.md](methodology.md)).
+Field sources: `on_chain` = chain state (staking + slashing modules, `CHAIN`); `reliability` / `chain_context` / `validator_performance` = Prometheus + RPC (`PROM`/`RPC`, soft: degrade to `null`, never fabricated); `governance` = chain governance module for open proposals, `incidents.json` for closed ones (see [methodology.md](methodology.md)); `proposals` = Cumulo's own missed-proposals monitor (Celestia only, opt-in per chain with `entry.proposals.enabled`).
 
 ```
 score = 100
@@ -56,7 +58,53 @@ elif gap > 20:
     score -= 10 ; score = min(score, GRADE_C_CEIL)
     flags += ["signing_gap"]                         # active signing gap
 
-# ── 2. Operator-run infrastructure (RPC + own node), applied on top ──
+# ── 1b. Validator core: block proposals (opt-in per chain, Celestia) ─
+# Miss RATE of scheduled block proposals, from Cumulo's own missed-proposals monitor.
+# Cumulative counters since the monitor started; a missed proposal is an inference from
+# public consensus data (CometBFT proposer selection re-run on the validator set), not an
+# on-chain record. Scored only with a minimum sample so a young monitor cannot swing the grade.
+turns = proposed + missed
+miss_rate_pct = 100 * missed / turns
+
+if proposals.enabled:
+    if proposals.available and turns >= proposal_min_turns:        # default 2000
+        if miss_rate_pct > proposal_miss_far_pct:                  # default 0.5
+            score -= 30 ; score = min(score, GRADE_C_CEIL)
+            flags += ["proposal_miss_rate_far_above_target"]
+        elif miss_rate_pct > proposal_miss_target_pct:             # default 0.1
+            score -= 15 ; score = min(score, GRADE_B_CEIL)
+            flags += ["proposal_miss_rate_above_target"]
+    else:
+        # monitor unavailable or sample too small: never fabricate a value, never cap
+        flags += ["proposals_not_scored"]                          # informational, 0 effect
+
+# ── 1c. Validator core: Fibre duty (opt-in per chain, Celestia) ──────
+# Source: Cumulo's Fibre Network Monitor (4 probes: US, EU, CA, AS; majority-of-regions readiness).
+# The WORST of three tests is applied once, with the lowest ceiling of those that fired, so a single
+# outage is not counted three times. Endorsements are NOT scored: the publisher stops collecting
+# signatures at 2/3 of the stake, so an unsigned blob is not a failure.
+if fibre.enabled:
+    if not (fibre.available and fibre.reason in ("ready", "not_ready", "no_host")):
+        flags += ["fibre_not_scored"]                              # informational, 0 effect (monitor unavailable,
+                                                                   # monitor_unknown or warming_up)
+    else:
+        cands = []                                                 # (penalty, ceiling, flag)
+        if fibre.reason == "no_host":    cands += [(20, 84, "fibre_not_registered")]
+        if fibre.reason == "not_ready":  cands += [(20, 84, "fibre_host_not_ready")]
+        if fibre.uptime_checks_7d >= fibre_min_uptime_checks:      # default 500
+            if fibre.uptime_7d_pct < fibre_uptime_target_pct - 1:  cands += [(24, 69, "fibre_uptime_far_below_target")]
+            elif fibre.uptime_7d_pct < fibre_uptime_target_pct:    cands += [(12, 84, "fibre_uptime_below_target")]   # default 99
+        if fibre.custody_checks_30d >= fibre_min_custody_checks:   # default 50
+            if fibre.custody_30d_pct < fibre_custody_far_pct:      cands += [(30, 69, "fibre_custody_far_below_target")]   # default 95
+            elif fibre.custody_30d_pct < fibre_custody_target_pct: cands += [(15, 84, "fibre_custody_below_target")]       # default 99
+        if cands:
+            score -= max(pen for pen, _, _ in cands)
+            score = min(score, min(cap for _, cap, _ in cands))
+            flags += [f for _, _, f in cands]
+        if fibre.identity_days_left is not None and 0 <= fibre.identity_days_left < 14:
+            flags += ["fibre_cert_expiring"]                       # informational
+
+# ── 2. Operator-run infrastructure (public RPC + its node), applied on top ──
 target = chain_config.rpc_availability_target_pct or 99.0   # per-chain override, else default
 if rpc_availability_7d_pct < target - 1:
     score -= 24 ; score = min(score, GRADE_C_CEIL)
@@ -116,8 +164,8 @@ grade = "A" if score >= 85 else "B" if score >= 70 else "C" if score >= 50 else 
 | Score | Grade | Meaning |
 |---|---|---|
 | 85-100 | **A** | Healthy: validator core sound, own infrastructure within target |
-| 70-84 | **B** | One moderate issue, e.g. RPC/own node below target, an unconfirmed on-chain record, a delayed upgrade, or governance participation moderately below target |
-| 50-69 | **C** | At-risk validator core, an active signing gap, a historical slashing event, or participation/RPC availability far below target |
+| 70-84 | **B** | One moderate issue, e.g. RPC/own node below target, an unconfirmed on-chain record, a delayed upgrade, governance participation moderately below target, or a block-proposal miss rate above target |
+| 50-69 | **C** | At-risk validator core, an active signing gap, a historical slashing event, participation/RPC availability far below target, or a block-proposal miss rate far above target |
 | 0-49 | **D** | Critical: jailed, not bonded, at or past the jail margin, or an ongoing signing outage |
 
 Several conditions **cap** the grade directly (state-machine ceilings) rather than only subtracting points. A single historical slashing event, for example, permanently caps the grade at C regardless of every other signal being clean, because the point deduction alone could be outweighed by an otherwise-perfect score.
@@ -134,9 +182,20 @@ Risk flags are attached to the SLO response as an array: the "why" behind a scor
 | `on_chain_unconfirmed_grade_capped` | `on_chain.available !== true` | Cap at B (84) |
 | `signing_gap_outage` | `head_height − last_signed_height` > 100 | −25, cap at D (40) |
 | `signing_gap` | Gap 21-100 blocks | −10, cap at C (69) |
+| `proposal_miss_rate_far_above_target` | Block-proposal miss rate > 0.5% with at least 2,000 turns | −30, cap at C (69) |
+| `proposal_miss_rate_above_target` | Block-proposal miss rate > 0.1% (and not far above) with at least 2,000 turns | −15, cap at B (84) |
+| `proposals_not_scored` | Proposals monitor enabled but unavailable, or fewer than 2,000 turns of data | Informational, **0, never scored, no cap** |
+| `fibre_not_registered` | Fibre monitor says the validator has no Fibre host registered on chain | −20, cap at B (84); worst of the three Fibre tests applies |
+| `fibre_host_not_ready` | Fibre host not ready by the majority of probe regions | −20, cap at B (84); worst of the three Fibre tests applies |
+| `fibre_uptime_far_below_target` | Fibre 7d uptime < target − 1pp (default 98%) with at least 500 checks | −24, cap at C (69); worst of three |
+| `fibre_uptime_below_target` | Fibre 7d uptime < target (default 99%) with at least 500 checks | −12, cap at B (84); worst of three |
+| `fibre_custody_far_below_target` | Data custody 30d < 95% with at least 50 checks | −30, cap at C (69); worst of three |
+| `fibre_custody_below_target` | Data custody 30d < 99% (and not far below) with at least 50 checks | −15, cap at B (84); worst of three |
+| `fibre_not_scored` | Fibre enabled but the monitor is unavailable, `monitor_unknown` or `warming_up` | Informational, **0, never scored, no cap** |
+| `fibre_cert_expiring` | Fibre identity certificate expires in less than 14 days | Informational, 0 |
 | `rpc_availability_far_below_target` | RPC 7d availability < target − 1pp | −24, cap at C (69) |
 | `rpc_availability_below_target` | RPC 7d availability < target | −12, cap at B (84) |
-| `own_node_stalled` | `catching_up`, or stale freshness with ≤1 missing validator network-wide | −12, cap at B (84) |
+| `own_node_stalled` | The public RPC node is `catching_up`, or its head is stale with ≤1 missing validator network-wide. (The id is kept for API stability; it describes the public RPC node, not the validator.) | −12, cap at B (84) |
 | `signing_at_risk` | Missed blocks ≥ 0.5 × jail margin | Cap at C (69), no separate deduction |
 | `jailed` / `not_bonded` / `signing_critical` | Jailed, not bonded, or missed blocks ≥ jail margin | Cap at D (40) |
 | `historical_slashing_event` | Ever slashed/double-signed, any point in Cumulo's record for this chain | Cap at C (69), **permanent** |
@@ -158,6 +217,10 @@ Risk flags are attached to the SLO response as an array: the "why" behind a scor
 | `duplicate_vote` / `late_votes` counters | Per-node, network-position-dependent signals, informational, not actionable |
 | Snapshot lag / availability | A community service metric, not a consensus-reliability signal |
 | Vote disclosure gaps | A transparency measure (is the vote publicly logged), not a reliability measure; surfaced as `governance_disclosure_gap` but never scored |
+| Block proposals with fewer than `proposal_min_turns` of data, or with the monitor unavailable | Insufficient sample, reported as `proposals_not_scored`, never extrapolated and never capped |
+| Fibre uptime or data custody with fewer checks than the minimum, or with the Fibre monitor unavailable / unsure | Insufficient sample, reported as `fibre_not_scored`, never extrapolated and never capped |
+| Fibre endorsements (blobs signed) | The publisher stops collecting signatures at 2/3 of the stake, so an unsigned blob is not a failure; shown, never scored |
+| Fibre network readiness (ready stake vs the 2/3 line) | Chain-wide context, not Cumulo's duty alone |
 | Availability with < 1 day of Prometheus history | Insufficient data window, reported as `null`, never extrapolated or estimated |
 
 **Design principle:** the model never fabricates a number to fill a data gap. A missing signal degrades to `null`/unscored rather than being coerced into a value that could produce a false reading in either direction.
@@ -186,6 +249,8 @@ The formula above superseded the original v2 model (chain-wide byzantine/missing
 - **Upgrade discipline**: a logged upgrade applied outside its announced window permanently caps the grade at B.
 - **Governance participation**: scored continuously against a per-chain target (default 90%); vote disclosure tracked alongside it but never scored.
 - **On-chain confirmation as load-bearing**: an unresolvable chain-state fetch caps the grade at B rather than defaulting to a clean bill of health.
+- **Block proposals (Celestia)**: scored by miss rate against a per-chain target (0.1% / 0.5%), with a minimum sample of 2,000 turns, from Cumulo's own missed-proposals monitor. Opt-in per chain; chains without the monitor are unchanged.
+- **Fibre (Celestia)**: host ready now, Fibre uptime (7d) and data custody (30d); the worst of the three applies once (max −30), from Cumulo's own Fibre Network Monitor. Opt-in per chain with `chains.json` `fibre`. The weight is to be reviewed once mainnet Fibre carries more traffic.
 - **Rolling 30d/90d/lifetime availability with persistent storage**: daily rollup, `reliability.long_term` in the posture payload; degrades to `null` per window until enough history exists, never extrapolated.
 
 No further changes to the scoring model are open in the backlog as of this writing. New chains inherit this same formula unchanged: only `jail_margin` inputs, RPC/governance targets, and `min_signed_per_window` are chain-specific configuration.

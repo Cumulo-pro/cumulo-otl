@@ -221,8 +221,55 @@ Full posture snapshot. Cached for 60 seconds server side.
     "disclosure_gaps":  0
   },
 
+  // ── Block proposals (opt-in per chain; Celestia) ───────────────────────
+  // Cumulo's own missed-proposals monitor, read from the explorer feed. Counters are cumulative
+  // since the monitor started (window: "since_monitor_start"), not a rolling window. A missed
+  // proposal is an inference from public consensus data, not an on-chain record. miss_rate_pct
+  // feeds posture_score (slo-scoring.md block 1b). On chains without the monitor the object is
+  // still present: { "enabled": false, "available": false }.
+  "proposals": {
+    "enabled":       true,
+    "available":     true,
+    "source":        "cumulo-missed-proposals-monitor",
+    "window":        "since_monitor_start",
+    "since_block":   13943819,
+    "proposed":      6260,
+    "missed":        0,
+    "turns":         6260,
+    "miss_rate_pct": 0,
+    "share_pct":     0.771,           // share of all proposals; should follow voting share over time
+    "network": { "miss_rate_pct": 0.054, "active_validators": 95, "zero_miss_validators": 60 },
+    "updated_at":    "2026-10-07T05:44:41.203Z"
+  },
+
+  // ── Fibre (opt-in per chain; Celestia) ───────────────────────────────────
+  // Cumulo's Fibre Network Monitor (4 probes, majority-of-regions readiness) plus the Fibre server's own
+  // Prometheus job. Feeds posture_score (slo-scoring.md block 1c). Only the host's country is exposed,
+  // never an IP or hosting provider. On chains without Fibre: { "enabled": false, "available": false }.
+  "fibre": {
+    "enabled": true, "available": true, "source": "cumulo-fibre-monitor",
+    "reason": "ready",                 // ready | not_ready | no_host | monitor_unknown | warming_up
+    "registered": true, "ready": true, "status": "online",
+    "regions_online": 4, "regions_reporting": 4,
+    "regions": [ { "region": "US", "status": "online", "rtt_ms": 3 } ],
+    "typical_rtt_ms": 106,
+    "uptime":  { "h24_pct": 100, "d7_pct": 100, "d30_pct": 100, "d7_checks": { "ok": 10100, "total": 10100 } },
+    "custody": { "d7_pct": 100, "d30_pct": 100, "d30_checks": { "ok": 96, "total": 96 } },   // null until a blob has been signed
+    "endorsements": { "d30": { "ok": 4, "total": 4 }, "d30_pct": 100 },                      // informational, never scored
+    "identity": { "ok": true, "not_after": "2027-10-31T16:33:18.000Z", "days_left": 363 },
+    "first_seen_at": "2026-10-20T03:58:47.609Z", "host_changed_at": "2026-10-28T07:58:57.489Z",
+    "host_country": "US", "stake_pct": 1.22, "rank": 21,
+    "network": { "ready_stake_pct": 85.89, "threshold_pct": 66.67, "ready_meets_threshold": true,
+                 "registered_validators": 73, "bonded_validators": 99,
+                 "liveness": { "validators": 3, "providers": 2, "countries": 2 } },        // chain-wide context, not scored
+    "server": { "up": true, "version": "10.5.0", "storage_used_bytes": 0, "storage_budget_bytes": 80530636800 },   // self-reported, null if unavailable
+    "history_since": "2026-10-20T03:00:00.000Z", "updated_at": "2026-11-02T09:36:50.139Z"
+  },
+
   // ── Validator performance ─────────────────────────────
   "validator_performance": {
+    // State of the validator node (prom_labels.node): block-syncing -> "syncing", otherwise "active".
+    // The public RPC is a separate service; its sync state is chain_context.catching_up.
     "state":                   "active",   // active | syncing | unknown
     "validator_address":       "45A2E210C9F6EFECBC2F46DEA1DECDDD1007AEDF",
     "validator_address_prom":  "45A2E210C9F6EFECBC2F46DEA1DECDDD1007AEDF",
@@ -241,7 +288,9 @@ Full posture snapshot. Cached for 60 seconds server side.
     "network_health": true,
     "validator":      true,
     "latency":        false,   // optional; true only where a latency probe is configured
-    "on_chain":       true
+    "on_chain":       true,
+    "proposals":      true,    // only listed on chains with the proposals monitor enabled
+    "fibre":          true     // only listed on chains with Fibre enabled
   },
 
   // ── Sources (public-safe, no IPs) ─────────────────────
@@ -306,6 +355,21 @@ Consumers must handle `null` for every Prometheus-, latency-, and on-chain-sourc
     "governance_participation_target_pct": 90.0,
     "governance_participation_pct":        100,
     "ever_delayed_upgrade":     false,
+    "proposals_scored":         true,    // null on chains without the proposals monitor
+    "proposal_miss_rate_pct":    0,
+    "proposal_miss_target_pct":  0.1,
+    "proposal_miss_far_pct":     0.5,
+    "proposal_min_turns":        2000,
+    // Fibre (all null on chains without Fibre)
+    "fibre_scored":              true,
+    "fibre_reason":              "ready",
+    "fibre_uptime_7d_pct":       100,
+    "fibre_uptime_scored":       true,
+    "fibre_custody_30d_pct":     100,
+    "fibre_custody_scored":      true,
+    "fibre_uptime_target_pct":   99,
+    "fibre_custody_target_pct":  99,
+    "fibre_custody_far_pct":     95,
     "risk_flags": []            // e.g. ["governance_participation_below_target", "signing_gap"]
   },
 
