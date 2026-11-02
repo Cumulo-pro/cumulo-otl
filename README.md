@@ -36,9 +36,10 @@ The OTL is not a replacement for internal monitoring. It is a different product 
 | XRPL EVM | Mainnet | 🟢 Live | [cumulo.pro/services/xrplevm_mainnet/otl](https://cumulo.pro/services/xrplevm_mainnet/otl) · [Documentation](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture) |
 | XRPL EVM | Testnet | 🟢 Live | [cumulo.pro/services/xrplevm/otl](https://cumulo.pro/services/xrplevm/otl) · [Documentation](https://cumulo.pro/services/xrplevm/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture) |
 | Celestia | Mainnet | 🟢 Live | [cumulo.pro/services/celestia/otl](https://cumulo.pro/services/celestia/otl) · [Documentation](https://cumulo.pro/services/celestia/otl-docs) · [Audit report (PDF)](https://cumulo.pro/services/celestia/otl-report) | [otl-api.cumulo.com.es/otl/v2/celestia/mainnet/posture](https://otl-api.cumulo.com.es/otl/v2/celestia/mainnet/posture) |
+| Celestia | Mocha (testnet) | 🟢 Live | [cumulo.pro/services/celestia_mocha/otl](https://cumulo.pro/services/celestia_mocha/otl) · [Documentation](https://cumulo.pro/services/celestia_mocha/otl-docs) · [Audit report (PDF)](https://cumulo.pro/services/celestia_mocha/otl-report) | [otl-api.cumulo.com.es/otl/v2/celestia/mocha/posture](https://otl-api.cumulo.com.es/otl/v2/celestia/mocha/posture) |
 | Gno.land | Pearl Testnet | 🟢 Live | [cumulo.pro/services/gnoland_testnet/otl](https://cumulo.pro/services/gnoland_testnet/otl) · [Documentation](https://cumulo.pro/services/gnoland_testnet/otl-docs) | [otl-api.cumulo.com.es/otl/v2/gnoland/testnet/posture](https://otl-api.cumulo.com.es/otl/v2/gnoland/testnet/posture) |
 
-Celestia Mainnet is the first standard permissionless Proof-of-Stake chain on the OTL, as opposed to XRPL EVM's Proof-of-Governance model. It runs on the same `cosmos-cometbft` profile and scoring model, with two chain-specific duties added to the grade: block proposals and Fibre (see below). Gno.land is not a Cosmos SDK chain (no staking, slashing or `x/gov` module), so its dashboard adapts the layout and marks the signals that do not apply as unavailable. Further CometBFT chains are onboarded by adding one entry to `chains.json`; see [Roadmap](#roadmap).
+Celestia Mainnet is the first standard permissionless Proof-of-Stake chain on the OTL, as opposed to XRPL EVM's Proof-of-Governance model. It runs on the same `cosmos-cometbft` profile and scoring model, with two chain-specific duties added to the grade: block proposals and Fibre (see below). Celestia Mocha, the public testnet, runs the same model on its own `mocha-5` data; its token has no economic value, so there the grade measures operational discipline, not financial exposure. Gno.land is not a Cosmos SDK chain (no staking, slashing or `x/gov` module), so its dashboard adapts the layout and marks the signals that do not apply as unavailable. Further CometBFT chains are onboarded by adding one entry to `chains.json`; see [Roadmap](#roadmap).
 
 ---
 
@@ -174,8 +175,9 @@ curl https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/slo | jq '.slo'
 - [chains/xrplevm-mainnet.md](chains/xrplevm-mainnet.md): XRPL EVM Mainnet chain profile
 - [chains/xrplevm-testnet.md](chains/xrplevm-testnet.md): XRPL EVM Testnet chain profile
 - [chains/celestia-mainnet.md](chains/celestia-mainnet.md): Celestia Mainnet chain profile
+- [chains/celestia-mocha.md](chains/celestia-mocha.md): Celestia Mocha (testnet) chain profile
 - [CHANGELOG.md](CHANGELOG.md): what changed and when
-- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) (Mainnet) · [cumulo.pro/services/xrplevm/otl-docs](https://cumulo.pro/services/xrplevm/otl-docs) (Testnet) · [cumulo.pro/services/celestia/otl-docs](https://cumulo.pro/services/celestia/otl-docs) (Celestia Mainnet) · [cumulo.pro/services/gnoland_testnet/otl-docs](https://cumulo.pro/services/gnoland_testnet/otl-docs) (Gno.land Pearl Testnet)
+- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) (Mainnet) · [cumulo.pro/services/xrplevm/otl-docs](https://cumulo.pro/services/xrplevm/otl-docs) (Testnet) · [cumulo.pro/services/celestia/otl-docs](https://cumulo.pro/services/celestia/otl-docs) (Celestia Mainnet) · [cumulo.pro/services/celestia_mocha/otl-docs](https://cumulo.pro/services/celestia_mocha/otl-docs) (Celestia Mocha) · [cumulo.pro/services/gnoland_testnet/otl-docs](https://cumulo.pro/services/gnoland_testnet/otl-docs) (Gno.land Pearl Testnet)
 
 ---
 
@@ -229,7 +231,8 @@ INDEPENDENT, ALSO FEEDING THE GRADE (read by the OTL API, Celestia)
 - [x] Celestia Mainnet live: the first standard Proof-of-Stake chain, validating the chain-agnostic claim end to end
 - [x] Block proposals scored (Celestia)
 - [x] Fibre duty scored (Celestia)
-- [x] Institutional PDF audit report (Celestia Mainnet, generated from live data on every request)
+- [x] Institutional PDF audit report (Celestia Mainnet and Mocha, generated from live data on every request)
+- [x] Celestia Mocha (testnet) live, with the same scoring model, block proposals and Fibre as Mainnet
 - [x] Gno.land Pearl Testnet dashboard (non-Cosmos-SDK chain)
 - [ ] Additional chains: Dymension and others
 - [ ] Review the weight of Fibre in the grade once mainnet Fibre carries more traffic

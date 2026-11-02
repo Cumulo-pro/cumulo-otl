@@ -1,6 +1,26 @@
 # Changelog
 
-All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026 and October to November 2026 batches below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026, October to November 2026 and November 2026 batches below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+
+---
+
+## November 2026 (schema `v2`, unchanged): Celestia Mocha
+
+Additive changes only. Celestia Mocha is a second Celestia entry on the same `cosmos-cometbft` profile and scoring model as Mainnet; no change to the `v2` response contract and no change to any other chain's score.
+
+### Added
+- **Celestia Mocha (testnet, `mocha-5`)**: full production deployment (`chains.json` entry, dashboard, documentation, API, institutional PDF audit report), live since November 2026. Same blocks as Mainnet: on-chain signing record, public RPC availability, governance, slashing and upgrade record, block proposals (1b) and Fibre (1c). Mocha has no IBC relayer section.
+- Chain profile [chains/celestia-mocha.md](chains/celestia-mocha.md).
+- Optional `incident_networks` list in a `chains.json` entry: the network names under which the chain appears in the activity log. Defaults to the chain's own `network`, so existing entries behave exactly as before.
+
+### Changed
+- The activity-log filter used for slashing history, upgrade discipline and governance participation now accepts a list of network names (`incidentNetworks()` in the API). The log spells Mocha as `testnet (mocha)`, `testnet (mocha-5)` and `mocha-5`; the filter compares the first word of the label, so all three are found.
+
+### Known limitations
+- The availability history of Mocha starts on 2 November 2026, when its Prometheus jobs were first scraped. The 30-day, 90-day and lifetime figures read "Not enough history yet" until the daily rollup has recorded enough full days, and a window that is not yet full is marked as partial.
+- `mocha-5` has had no governance proposals so far, so governance participation has no eligible votes and is not scored (no penalty and no bonus).
+- The complete missed-proposals history is not served for Mocha yet; the OTL shows the current proposals figures.
+- Fibre on Mocha carries little traffic so far, so data custody and endorsements rest on small samples. The weight of Fibre in the grade will be reviewed as traffic grows.
 
 ---
 
