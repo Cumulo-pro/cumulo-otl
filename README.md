@@ -35,8 +35,10 @@ The OTL is not a replacement for internal monitoring. It is a different product 
 |---|---|---|---|---|
 | XRPL EVM | Mainnet | 🟢 Live | [cumulo.pro/services/xrplevm_mainnet/otl](https://cumulo.pro/services/xrplevm_mainnet/otl) · [Documentation](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/posture) |
 | XRPL EVM | Testnet | 🟢 Live | [cumulo.pro/services/xrplevm/otl](https://cumulo.pro/services/xrplevm/otl) · [Documentation](https://cumulo.pro/services/xrplevm/otl-docs) | [otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture](https://otl-api.cumulo.com.es/otl/v2/xrplevm/testnet/posture) |
+| Celestia | Mainnet | 🟢 Live | [cumulo.pro/services/celestia/otl](https://cumulo.pro/services/celestia/otl) · [Documentation](https://cumulo.pro/services/celestia/otl-docs) · [Audit report (PDF)](https://cumulo.pro/services/celestia/otl-report) | [otl-api.cumulo.com.es/otl/v2/celestia/mainnet/posture](https://otl-api.cumulo.com.es/otl/v2/celestia/mainnet/posture) |
+| Gno.land | Pearl Testnet | 🟢 Live | [cumulo.pro/services/gnoland_testnet/otl](https://cumulo.pro/services/gnoland_testnet/otl) · [Documentation](https://cumulo.pro/services/gnoland_testnet/otl-docs) | [otl-api.cumulo.com.es/otl/v2/gnoland/testnet/posture](https://otl-api.cumulo.com.es/otl/v2/gnoland/testnet/posture) |
 
-Additional CometBFT chains, including standard Proof-of-Stake chains rather than XRPL EVM's Proof-of-Governance model, are onboarded by adding one entry to `chains.json`. The same `cosmos-cometbft` profile and scoring model apply unchanged; see [Roadmap](#roadmap).
+Celestia Mainnet is the first standard permissionless Proof-of-Stake chain on the OTL, as opposed to XRPL EVM's Proof-of-Governance model. It runs on the same `cosmos-cometbft` profile and scoring model, with two chain-specific duties added to the grade: block proposals and Fibre (see below). Gno.land is not a Cosmos SDK chain (no staking, slashing or `x/gov` module), so its dashboard adapts the layout and marks the signals that do not apply as unavailable. Further CometBFT chains are onboarded by adding one entry to `chains.json`; see [Roadmap](#roadmap).
 
 ---
 
@@ -48,7 +50,7 @@ For each supported chain, the OTL exposes:
 A single-signal summary of infrastructure status: `ready` · `syncing` · `stale` · `bootstrapping` · `maintenance` · `down`
 
 ### SLO Score & Grade
-A composite 0-100 score, expressed as a letter grade (A to D), built entirely from signals specific to **Cumulo's own infrastructure**: on-chain signing record against the chain's own jailing threshold, public RPC availability against a published target, and the track-record signals below. It deliberately does **not** penalise chain-wide conditions outside Cumulo's control (byzantine/missing validators, consensus round duration) or availability computed over an incomplete history. See [docs/slo-scoring.md](docs/slo-scoring.md) for the full formula, thresholds, and risk-flag catalogue.
+A composite 0-100 score, expressed as a letter grade (A to D), built entirely from signals specific to **Cumulo's own infrastructure**: on-chain signing record against the chain's own jailing threshold, public RPC availability against a published target, and the track-record signals below. On chains where they exist, delivering the blocks the validator is scheduled to propose and keeping its Fibre server ready are scored too (see the chain's profile). It deliberately does **not** penalise chain-wide conditions outside Cumulo's control (byzantine/missing validators, consensus round duration) or availability computed over an incomplete history. See [docs/slo-scoring.md](docs/slo-scoring.md) for the full formula, thresholds, and risk-flag catalogue.
 
 ### Track Record & Governance
 Computed from the public [incidents.json](https://github.com/Cumulo-pro/Cumulo-Front-Chain/blob/main/incidents.json) activity log and, for proposals still open, the live chain governance module, independent of live node metrics:
@@ -67,6 +69,12 @@ Computed from the public [incidents.json](https://github.com/Cumulo-pro/Cumulo-F
 - Last signed block height (active consensus participation)
 - Probe-based availability over a rolling window (up to 7 days; uses whatever Prometheus history exists if shorter, and the payload declares this in `data_window`)
 - Consensus address (`SHA256(consensus_pubkey)` truncated to 20 bytes, the value block explorers show)
+
+### Block Proposals (Celestia)
+On a chain where a validator's reliability is measured above all by delivering the blocks it is scheduled to propose, signing uptime alone does not show it. The OTL publishes proposals made and missed, the miss rate, the validator's share of all proposals against its voting share, and how many active validators have zero misses. Counts come from Cumulo's own [missed proposals monitor](https://cumulo.pro/services/celestia/missed-proposals), inferred from public consensus data, with the complete history published as JSON. The miss rate is part of the grade once a minimum sample exists. See [docs/methodology.md](docs/methodology.md) § 10.
+
+### Fibre (Celestia)
+Every Celestia validator operates a Fibre server, and Fibre payments only settle when validators holding two thirds of the stake have a ready one. The OTL shows whether Cumulo's host is ready (as seen by the majority of four probe regions), Fibre uptime over 24 hours, 7 and 30 days, data custody (the share of the blobs Cumulo signed that its host actually served, checked against the blob commitment), endorsements, latency by region, identity certificate expiry and the network's readiness against the two-thirds line. Measured by Cumulo's own [Fibre Network Monitor](https://cumulo.pro/services/celestia/fibre), whose raw data is public. Only the host's country is shown, never an address. The worst of host readiness, uptime and custody is part of the grade, applied once. See [docs/methodology.md](docs/methodology.md) § 11.
 
 ### On-Chain Validator Record
 Sourced entirely from chain state (staking + slashing modules), independent of the node's own telemetry and re-derivable by anyone from any LCD. These are the same standard fields on every Cosmos SDK / CometBFT chain; what they represent depends on that chain's economic model (see each chain's profile):
@@ -112,13 +120,15 @@ OTL data derives from open, verifiable sources with no proprietary intermediary.
 | Prometheus (CometBFT exporter) | `PROM` | self-reported | Standard metrics exported by the node binary. Consensus timings, peer counts, validator counters, network health, probe-based availability. |
 | check_d (aggregate-rpcs collector) | `CHECK_D` | independent | External endpoint scan: reliability, per-region latency, TLS validity, CORS, pruning, node version, block height. |
 | snapshot_checker (aggregate-snapshots collector) | `SNAPCHECK` | independent | External snapshot check: size, last-modified time, measured download speed, and state-sync availability. |
+| Missed proposals monitor | `PROPOSALS` | independent | Cumulo's own monitor of block proposals made and missed, inferred from public consensus data (Celestia). |
+| Fibre Network Monitor | `FIBRE` | independent | Cumulo's own monitor of every Fibre server: four probes (US, EU, CA, AS) check each host and verify the data it holds against the blob commitment (Celestia). |
 | Chain state (staking + slashing modules) | `CHAIN` | on-chain | Signing uptime, bonded / jailed status, voting weight (delegated stake or governance-assigned, per chain), commission. Consensus state, re-derivable from any LCD via `cosmos/staking/v1beta1/validators/<valoper>` and `cosmos/slashing/v1beta1/signing_infos`. |
 
 No proprietary data sources. No black boxes. Every metric is independently verifiable.
 
 ### Independent Collectors
 
-Two standalone Cumulo collectors run separately from the OTL API and cross-check what the node reports about itself:
+Standalone Cumulo collectors run separately from the OTL API and cross-check what the node reports about itself. Two cover the public endpoints and snapshots on every chain; the other two (missed proposals and Fibre) are specific to Celestia and feed the grade through the OTL API:
 
 **check_d: endpoint scan**
 - Live output: <https://aggregate-rpcs.cumulo.com.es/aggregate-rpcs>
@@ -163,7 +173,9 @@ curl https://otl-api.cumulo.com.es/otl/v2/xrplevm/mainnet/slo | jq '.slo'
 - [docs/api-schema.md](docs/api-schema.md): full API response schema
 - [chains/xrplevm-mainnet.md](chains/xrplevm-mainnet.md): XRPL EVM Mainnet chain profile
 - [chains/xrplevm-testnet.md](chains/xrplevm-testnet.md): XRPL EVM Testnet chain profile
-- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) (Mainnet) · [cumulo.pro/services/xrplevm/otl-docs](https://cumulo.pro/services/xrplevm/otl-docs) (Testnet)
+- [chains/celestia-mainnet.md](chains/celestia-mainnet.md): Celestia Mainnet chain profile
+- [CHANGELOG.md](CHANGELOG.md): what changed and when
+- Live per-chain methodology: [cumulo.pro/services/xrplevm_mainnet/otl-docs](https://cumulo.pro/services/xrplevm_mainnet/otl-docs) (Mainnet) · [cumulo.pro/services/xrplevm/otl-docs](https://cumulo.pro/services/xrplevm/otl-docs) (Testnet) · [cumulo.pro/services/celestia/otl-docs](https://cumulo.pro/services/celestia/otl-docs) (Celestia Mainnet) · [cumulo.pro/services/gnoland_testnet/otl-docs](https://cumulo.pro/services/gnoland_testnet/otl-docs) (Gno.land Pearl Testnet)
 
 ---
 
@@ -191,6 +203,11 @@ ON-CHAIN (into OTL API)
 INDEPENDENT (consumed directly by the Dashboard, not by the OTL API)
   check_d (aggregate-rpcs)               ->  external endpoint scan
   snapshot_checker (aggregate-snapshots) ->  external snapshot + state-sync check
+
+INDEPENDENT, ALSO FEEDING THE GRADE (read by the OTL API, Celestia)
+  missed proposals monitor               ->  proposals made / missed, miss rate
+  Fibre Network Monitor                  ->  host readiness, Fibre uptime, data custody
+  Fibre server Prometheus job            ->  server up, version, storage (context only)
 ```
 
 **Stack:** Node.js · Express · Prometheus · CometBFT · PHP · Nginx · Tailwind CSS
@@ -209,8 +226,15 @@ INDEPENDENT (consumed directly by the Dashboard, not by the OTL API)
 - [x] Rolling 30d / 90d / lifetime availability with persistent daily rollup
 - [x] Incident history (slashing, delayed upgrades) integrated into the SLO score
 - [x] Governance vote participation and public-disclosure tracking integrated into the SLO score
-- [ ] Additional chains: Celestia, Dymension (including at least one standard Proof-of-Stake chain, to validate the methodology's chain-agnostic claim end to end)
-- [ ] PDF report generation (monthly SLO report)
+- [x] Celestia Mainnet live: the first standard Proof-of-Stake chain, validating the chain-agnostic claim end to end
+- [x] Block proposals scored (Celestia)
+- [x] Fibre duty scored (Celestia)
+- [x] Institutional PDF audit report (Celestia Mainnet, generated from live data on every request)
+- [x] Gno.land Pearl Testnet dashboard (non-Cosmos-SDK chain)
+- [ ] Additional chains: Dymension and others
+- [ ] Review the weight of Fibre in the grade once mainnet Fibre carries more traffic
+- [ ] Availability that also requires the node to be at the chain head, not only answering its metrics endpoint
+- [ ] Scheduled monthly PDF report
 
 ---
 
@@ -233,4 +257,4 @@ Cumulo is an institutional-grade validator and node infrastructure provider oper
 
 ---
 
-*OTL v2 · Schema version: v2 · Last updated: September 2026*
+*OTL v2 · Schema version: v2 · Last updated: November 2026*
