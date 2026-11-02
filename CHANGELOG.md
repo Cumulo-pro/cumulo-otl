@@ -1,6 +1,31 @@
 # Changelog
 
-All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026 batch below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026 and October to November 2026 batches below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+
+---
+
+## October to November 2026 (schema `v2`, unchanged): Celestia Mainnet, block proposals, Fibre
+
+Additive changes only: new optional objects and fields, no change to the existing `v2` response contract. Chains that do not enable the new blocks get `proposals.enabled: false` and `fibre.enabled: false`, and their score is computed exactly as before.
+
+### Added
+- **Celestia Mainnet**: full production deployment (`chains.json` entry, dashboard, documentation, API), live since September 2026 and extended in this batch. First standard permissionless Proof-of-Stake chain on the OTL.
+- **Block proposals** (`proposals`, `PROPOSALS`): proposals made and missed, miss rate, share of proposals against voting share, and network context, from Cumulo's missed-proposals monitor. Scored as block 1b: miss rate above 0.1% costs 15 points and caps the grade at B, above 0.5% costs 30 and caps it at C, with a minimum of 2,000 proposal turns before it is scored. Flags `proposal_miss_rate_above_target`, `proposal_miss_rate_far_above_target` and `proposals_not_scored`.
+- **Fibre** (`fibre`, `FIBRE`): host readiness as seen by the majority of four probe regions, Fibre uptime (24h, 7d, 30d), data custody, endorsements, latency by region, identity certificate expiry, network readiness against the two-thirds line, and the Fibre server's own Prometheus job. Scored as block 1c: the worst of host readiness, 7-day uptime against 99% and 30-day data custody against 99% is applied once (maximum 30 points). Endorsements and network readiness are context only. If the monitor is unavailable or unsure, or the sample is too small, nothing is penalised and `fibre_not_scored` is raised. New flags: `fibre_host_not_ready`, `fibre_not_registered`, `fibre_uptime_below_target`, `fibre_uptime_far_below_target`, `fibre_custody_below_target`, `fibre_custody_far_below_target`, `fibre_not_scored`, `fibre_cert_expiring`. Opt-in per chain with the `fibre` object in `chains.json`.
+- `capabilities.proposals` and `capabilities.fibre`; `slo_config.fibre_*`; `slo.fibre_*` and `slo.proposal_*` output fields. See [docs/api-schema.md](docs/api-schema.md).
+- **Institutional PDF audit report** for Celestia Mainnet, generated from live data.
+- Chain profile [chains/celestia-mainnet.md](chains/celestia-mainnet.md) and methodology sections 10 (block proposals) and 11 (Fibre).
+- Test suites for the proposals and Fibre scoring and for the incident log handling.
+
+### Changed
+- Celestia's validator architecture changed in October 2026: the Horcrux threshold signer was retired and the validator moved to a new host, with a single consensus key in a local key file, signing over a mutually authenticated channel from the Fibre host, and a separate keyless full node serving Fibre. The OTL documentation, the activity log and the report describe the new setup, and the migration is recorded in the activity log.
+- `validator_performance.state` now follows the validator node's own block-sync state when it is exported, instead of falling back to the public RPC's state.
+- The `own_node_stalled` flag keeps its id for API stability but describes the **public RPC node** (`catching_up`, or a stale head). The dashboard label reads "Public RPC node stalled".
+- The Prometheus scrape of the validator node for Celestia now reads the validator's own job instead of a sentry. The daily availability rollup follows `chains.json`, so the "validator node" series combines both sources: sentry until 1 November 2026, validator node from 2 November. Earlier days are not recalculated.
+
+### Known limitations
+- Availability (`rpc_availability_7d_pct`, node availability and their rollups) measures whether the node answers its metrics endpoint. A node that is running but behind the chain head still counts as up; sync state is covered separately by chain freshness and the `own_node_stalled` flag.
+- Fibre on mainnet carries little traffic so far, so data custody and endorsements rest on small samples. The weight of Fibre in the grade will be reviewed as traffic grows.
 
 ---
 
