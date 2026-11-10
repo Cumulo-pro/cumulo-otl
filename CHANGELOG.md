@@ -1,6 +1,37 @@
 # Changelog
 
-All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026, October to November 2026 and November 2026 batches below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+All notable changes to the Cumulo OTL are documented here. The API's own `schema_version` field has stayed `v2` since the March 2026 rewrite and remains `v2` through the September 2026, October to November 2026 and both November 2026 batches below — despite its size, it does not break the `v2` response contract. Entries are grouped by when the work shipped; a section only gets its own `[vN]` heading when the schema itself is actually bumped.
+
+---
+
+## November 2026 (schema `v2`, unchanged): scoring, RPC availability ceiling
+
+Scoring change, applied to every chain at once (shared `buildSlo()`); no change to the `v2` response contract.
+
+### Changed
+- `rpc_availability_far_below_target` (public RPC 7d availability below the target minus one point) now caps the grade at **B** instead of **C**. The deduction is unchanged (-24), so a far-below miss still scores lower (76 with everything else at maximum) than a slight miss (-12, 84). Rationale: the public RPC is an operator-run service, not the validator core. Signing, bonding and slashing remain what drives the C and D ceilings, and the OTL already capped a stalled RPC node (`own_node_stalled`) at B, so a measured availability shortfall of the same service is now treated consistently. The 99.0% target and the 7-day window are unchanged. Documentation: `docs/slo-scoring.md` and the Methodology page of every chain.
+- No chain changes grade today as a result except XRPL EVM Mainnet and Testnet, which were at C (69) for this flag and move to B (76).
+
+---
+
+## November 2026 (schema `v2`, unchanged): Cosmos Hub
+
+Additive changes only. The Cosmos Hub mainnet and provider testnet are two new entries on the same `cosmos-cometbft` profile and scoring model as Celestia; no change to the `v2` response contract and no change to any other chain's score.
+
+### Added
+- **Cosmos Hub Mainnet (`cosmoshub-4`) and Cosmos Hub provider testnet (`provider`)**: full production deployment (`chains.json` entries, dashboards, documentation, API, institutional PDF audit report), live since November 2026. Block proposals, Fibre and the bridge node are not enabled (Celestia duties), so these chains report `proposals.enabled: false` and `fibre.enabled: false`.
+- Chain profiles [chains/cosmos-hub-mainnet.md](chains/cosmos-hub-mainnet.md) and [chains/cosmos-hub-testnet.md](chains/cosmos-hub-testnet.md).
+- Optional `on_chain.gov_reverse_pagination` flag in a `chains.json` entry: the governance proposals list is read newest first and paging stops once a page reaches back 30 days before the window start. Chains that do not set it behave exactly as before.
+
+### Fixed
+- Governance participation on the Cosmos Hub was unavailable because the `gov/v1` proposals list answers HTTP 500 on any page that includes a legacy `v1beta1` parameter-change proposal, so reading the list from the oldest proposal always failed. Reading newest first avoids those pages.
+
+### Known limitations
+- Governance participation on the Hub mainnet is counted from 3 March 2026 (`governance_tracking_since`), the first proposal covered by the tracker. A closed proposal with no entry in the activity log counts as not voted.
+- Governance participation is not scored on the provider testnet: the activity log records only some of its proposals, so a figure would measure the log, not the validator. The chain entry carries no governance fields on purpose.
+- No IBC relayer section yet for the Cosmos Hub.
+- The snapshot of the Hub mainnet is not yet cross-checked by `snapshot_checker` (no Cumulo entry for the Hub), and the provider testnet has no public snapshot index in the OTL.
+- The activity log has two older entries under the chain name `Cosmos` instead of `Cosmos Hub`, which the API filter does not match until they are renamed at the source.
 
 ---
 
