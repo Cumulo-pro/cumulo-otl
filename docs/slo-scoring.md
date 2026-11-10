@@ -107,7 +107,7 @@ if fibre.enabled:
 # ── 2. Operator-run infrastructure (public RPC + its node), applied on top ──
 target = chain_config.rpc_availability_target_pct or 99.0   # per-chain override, else default
 if rpc_availability_7d_pct < target - 1:
-    score -= 24 ; score = min(score, GRADE_C_CEIL)
+    score -= 24 ; score = min(score, GRADE_B_CEIL)   # B, not C: the public RPC is not the validator core
     flags += ["rpc_availability_far_below_target"]
 elif rpc_availability_7d_pct < target:
     score -= 12 ; score = min(score, GRADE_B_CEIL)
@@ -164,8 +164,8 @@ grade = "A" if score >= 85 else "B" if score >= 70 else "C" if score >= 50 else 
 | Score | Grade | Meaning |
 |---|---|---|
 | 85-100 | **A** | Healthy: validator core sound, own infrastructure within target |
-| 70-84 | **B** | One moderate issue, e.g. RPC/own node below target, an unconfirmed on-chain record, a delayed upgrade, governance participation moderately below target, or a block-proposal miss rate above target |
-| 50-69 | **C** | At-risk validator core, an active signing gap, a historical slashing event, participation/RPC availability far below target, or a block-proposal miss rate far above target |
+| 70-84 | **B** | One moderate issue, e.g. RPC/own node below target or far below target, an unconfirmed on-chain record, a delayed upgrade, governance participation moderately below target, or a block-proposal miss rate above target |
+| 50-69 | **C** | At-risk validator core, an active signing gap, a historical slashing event, governance participation far below target, or a block-proposal miss rate far above target |
 | 0-49 | **D** | Critical: jailed, not bonded, at or past the jail margin, or an ongoing signing outage |
 
 Several conditions **cap** the grade directly (state-machine ceilings) rather than only subtracting points. A single historical slashing event, for example, permanently caps the grade at C regardless of every other signal being clean, because the point deduction alone could be outweighed by an otherwise-perfect score.
@@ -193,7 +193,7 @@ Risk flags are attached to the SLO response as an array: the "why" behind a scor
 | `fibre_custody_below_target` | Data custody 30d < 99% (and not far below) with at least 50 checks | −15, cap at B (84); worst of three |
 | `fibre_not_scored` | Fibre enabled but the monitor is unavailable, `monitor_unknown` or `warming_up` | Informational, **0, never scored, no cap** |
 | `fibre_cert_expiring` | Fibre identity certificate expires in less than 14 days | Informational, 0 |
-| `rpc_availability_far_below_target` | RPC 7d availability < target − 1pp | −24, cap at C (69) |
+| `rpc_availability_far_below_target` | RPC 7d availability < target − 1pp | −24, cap at B (84) |
 | `rpc_availability_below_target` | RPC 7d availability < target | −12, cap at B (84) |
 | `own_node_stalled` | The public RPC node is `catching_up`, or its head is stale with ≤1 missing validator network-wide. (The id is kept for API stability; it describes the public RPC node, not the validator.) | −12, cap at B (84) |
 | `signing_at_risk` | Missed blocks ≥ 0.5 × jail margin | Cap at C (69), no separate deduction |
